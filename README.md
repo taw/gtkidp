@@ -3,6 +3,13 @@ gtkidp
 
 Gtk+/CLI interface for Internet Dictionary Project
 
+Description
+===========
+
+This project provides software to use with IDP dictionaries under
+Linux and other Unices. This project doesn't redistribute dictionaries, but
+they are 95% free, so you can download them from http://www.june29.com/IDP/
+
 Note
 ====
 
