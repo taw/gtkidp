@@ -1,0 +1,409 @@
+#!/usr/bin/perl -w
+# Copyright 2000-2001 Tomasz Wegrzanowski <Tomasz.Wegrzanowski@gmail.com>
+# Licensed under GPL 2 or newer
+
+### MESSAGES
+
+my $version = '0.2';
+
+my $about =
+"GTK IDP version $version
+Copyright 2000 Tomasz Wegrzanowski <Tomasz.Wegrzanowski\@gmail.com>
+
+GTK IDP is free, extensible and portable
+replacement of IDPC32. Program translates
+words from/to English using Internet
+Dictionary Project's dictionary files.
+
+GTK IDP is free software;
+you can redistribute it and/or modify
+it under the terms of the GNU General Public License
+as published by the Free Software Foundation;
+either version 2 of the License, or
+(at your option) any later version.
+
+GTK IDP is distributed in the hope that
+it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY
+or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You can find a copy of the GNU General Public License in
+one of the following directories : `/usr/doc/copyright',
+`/usr/share/doc/copyright' or `/usr/share/common-licences',
+in the file GPL; if not, you can obtain a copy writing to the
+Free Software Foundation, Inc., 59 Temple Place, Suite
+330, Boston, MA 02111-1307, USA.";
+
+my $help =
+"Usage:
+$0 [options] [word]
+Options:
+-h, --help		This message
+-v, --version		Print version and exit
+-l, --licence,		Print license and exit
+    --license		Print license and exit
+-c, --cli		Force CLI interface
+-g, --gtk		Force GTK+ interface
+-s, --strategy exact	Specified word is exactly dictionary entry
+-s, --strategy contain	Specified word is part of dictionary entry
+-s, --strategy re	Specified word is re that matches dictionary entry
+-f, --from lang		Two-letter code of source language
+-t, --to lang   	Two-letter code of destination language
+
+You can't specify both --to and --from
+One of languages is always English
+Second one defaults to French
+";
+
+### LIST OF AVAILABLE DICTIONARIES
+
+my @langcodes = (
+  'en',
+  'fr',
+  'de',
+  'it',
+  'la',
+  'pt',
+  'es'
+);
+
+my @langs = (
+  'English',
+  'French',
+  'German',
+  'Italian',
+  'Latin',
+  'Portuguese',
+  'Spanish'
+);
+
+my @dictfiles = (
+  '',
+  'French.txt',
+  'German.txt',
+  'Italian.txt',
+  'Latin.txt',
+  'Portuguese.txt',
+  'Spanish.txt'
+);
+
+### Character Conversion Table IDPencoding -> iso-latin-1
+# if you want to add new conversion here, you should also
+# change regexp in get_idp_translation()
+
+my %conv_tab = (
+  'a\\'=>'à', 'e\\'=>'è', 'i\\'=>'ì', 'o\\'=>'ò', 'u\\'=>'ù',
+  'A\\'=>'À', 'E\\'=>'È', 'I\\'=>'Ì', 'O\\'=>'Ò', 'U\\'=>'Ù',
+  'a/' =>'á', 'e/' =>'é', 'i/' =>'í', 'o/' =>'ó', 'u/' =>'ú',
+  'A/' =>'Á', 'E/' =>'É', 'I/' =>'Í', 'O/' =>'Ó', 'U/' =>'Ú',
+  'a.' =>'ä', 'o.' =>'ö', 'u.' =>'ü',
+  'A.' =>'Ä', 'O.' =>'Ö', 'U.' =>'Ü',
+  'n~' =>'ñ', 'N~' =>'Ñ'
+);
+
+### Global Variables
+
+my $lang  = 1;    # index nr in @langs and @datafiles
+my $left  = 0;    # FROM lang nr
+my $right = 1;    # INTO lang nr
+my $side  = 1;    # 0 - from en, 1 - to en
+my $strategy = 1; # 0 - exact, 1 - contain, 2 - re
+my $word  = '';   # Used only by CLI $$$ TODO:port to Gtk+
+
+### IMPORTANT GTK+ WIDGETS
+
+my $option_from;
+my $option_into;
+my $entry_word;
+my $textbox;
+my $label_res;
+
+### WHICH INTERFACE SHOULD WE USE
+
+my $ui_gtk = 0;   # 1 = 'gtk', 0 = 'cli'
+if (defined $ENV{DISPLAY}) {
+  $ui_gtk = 1;
+}
+
+### PARSE CMDLINE
+
+while (@ARGV) {
+  my $arg = shift @ARGV;
+  if ($arg eq '-v' or $arg eq '--version') {
+      print $version,"\n";
+      exit;
+  } elsif ($arg eq '-l' or $arg eq '--license' or $arg eq '--licence' ) {
+      print $about,"\n";
+      exit;
+  } elsif ($arg eq '-h' or $arg eq '--help' ) {
+      print $help,"\n";
+      exit;
+  } elsif ($arg eq '-c' or $arg eq '--cli' ) {
+      $ui_gtk = 0;
+  } elsif ($arg eq '-g' or $arg eq '--gtk' ) {
+      $ui_gtk = 1;
+  } elsif ($arg eq '-s' or $arg eq '--strategy') {
+      my $strategy_name = shift @ARGV;
+      unless ($strategy_name) {
+            print "You must specify strategy name after $arg\n";
+	    exit 1;
+      }
+         if ($strategy_name eq 're') { $strategy = 2 }
+      elsif ($strategy_name eq 'exact') { $strategy = 0 }
+      elsif ($strategy_name eq 'contain') { $strategy = 1 }
+      else  {
+          print "Wrong strategy : `$strategy_name' specified after $arg\n";
+	  exit 1;
+      }
+  } elsif ($arg eq '-t' or $arg eq '--to') {
+      my $lang_code = shift @ARGV;
+      unless ($lang_code) {
+            print "You must specify language code after $arg\n";
+	    exit 1;
+      }
+      my $lang_no = undef;
+      for my $i (0..$#langcodes) {
+            if ($langcodes[$i] eq $lang_code) { $lang_no = $i; last }
+      }
+      unless (defined $lang_no) {
+            print "Wrong language code : `$lang_code' specified after $arg\n";
+	    exit 1;
+      }
+      $right = $lang_no;
+      if ($right) { $left = 0 }
+  } elsif ($arg eq '-f' or $arg eq '--form') {
+      my $lang_code = shift @ARGV;
+      unless ($lang_code) {
+            print "You must specify language code after $arg\n";
+	    exit 1;
+      }
+      my $lang_no = undef;
+      for my $i (0..$#langcodes) {
+            if ($langcodes[$i] eq $lang_code) { $lang_no = $i; last }
+      }
+      unless (defined $lang_no) {
+            print "Wrong language code : `$lang_code' specified after $arg\n";
+	    exit 1;
+      }
+      $left  = $lang_no;
+      if ($left) { $right = 0 }
+  } else {
+      if ($word) {$word .= " "};
+      $word .= $arg; # We are concating to allow multi-part words w/o quoetes
+  }
+}
+
+### RUN ###
+
+if ($ui_gtk)
+  { gtk_idp () }
+else 
+  { cli_idp () }
+
+### INTERFACE - CLI
+
+sub cli_idp {
+ $lang = ($left)?($left):($right);
+ $result = get_idp_translation  ( $word );
+  unless ($result) {
+      print "Sorry, couldn't find translation for `$word'\n";
+      exit 1;
+  }
+  print $result;
+  exit;
+}
+
+### INTERFACE - GTK
+
+sub gtk_idp {
+  # INIT GTK - IT IS HERE SO WE CAN USE CLI WITHOUT EVEN INITING GTK
+  use Gtk;
+  init Gtk;
+
+  # MAIN WINDOW
+  my $top = new Gtk::Window ('-toplevel');
+  $top->title ('Gtk+ IDP');
+  $top->signal_connect ('destroy',sub{exit},0);
+
+  # MAIN VBOX
+  my $vbox_main = new Gtk::VBox (0,10);
+  $top->border_width (10);
+  $top->add ($vbox_main);
+
+  # `WORD' LABEL
+  my $label_word = new Gtk::Label 'Translate this word:';
+  $vbox_main->pack_start_defaults ($label_word);
+
+  # `WORD' ENTRY
+  $entry_word = new Gtk::Entry (40);
+  $vbox_main->pack_start_defaults ($entry_word);
+
+  # ENTRY HBOX
+  my $hbox_entry = new Gtk::HBox (0,10);
+  $vbox_main->pack_start_defaults ($hbox_entry);
+
+  # `INTO' VBOX
+  my $vbox_into = new Gtk::VBox (0,0);
+  $hbox_entry->pack_end_defaults ($vbox_into);
+
+  # `INTO' LABEL
+  my $label_into = new Gtk::Label 'Into:';
+  $vbox_into->pack_start_defaults ($label_into);
+
+  # `INTO' VBOX CONTENTS
+  $option_into = new Gtk::OptionMenu;
+  $vbox_into->pack_start_defaults ($option_into);
+
+  # `FROM' VBOX
+  my $vbox_from = new Gtk::VBox (0,0);
+  $hbox_entry->pack_end_defaults ($vbox_from);
+
+  # `FROM' LABEL
+  my $label_from = new Gtk::Label 'From:';
+  $vbox_from->pack_start_defaults ($label_from);
+
+  # `FROM' VBOX CONTENTS
+  $option_from = new Gtk::OptionMenu;
+  $vbox_from->pack_start_defaults ($option_from);
+
+  # `FROM' AND `INTO' MENUES
+  my $menu_from = new Gtk::Menu;
+  my $menu_into = new Gtk::Menu;
+  my @item_from;
+  my @item_into;
+  foreach my $lang(0..$#langs) {
+      $item_from[$lang] = new Gtk::MenuItem ($langs[$lang]);
+      $menu_from->append ($item_from[$lang]);
+      $item_from[$lang]->signal_connect ('activate',*choose_from_lang,$lang);
+      $item_into[$lang] = new Gtk::MenuItem ($langs[$lang]);
+      $menu_into->append ($item_into[$lang]);
+      $item_into[$lang]->signal_connect ('activate',*choose_into_lang,$lang);
+  }
+  $option_from->set_menu ($menu_from);
+  $option_from->set_history ($left);
+  $option_into->set_menu ($menu_into);
+  $option_into->set_history ($right);
+
+  # BUTTONS HBOX
+  my $hbox_but = new Gtk::HBox (0,10);
+  $vbox_main->pack_start_defaults ($hbox_but);
+
+  # `TRANSLATE' BUTTON
+  my $button_go = new Gtk::Button 'Translate';
+  $hbox_but->pack_start_defaults ($button_go);
+  $button_go->signal_connect ('pressed',*translate,0);
+
+  # `ABOUT' BUTTON
+  my $button_about=new Gtk::Button 'About';
+  $hbox_but->pack_start_defaults ($button_about);
+  $button_about->signal_connect ('pressed',*about,0);
+
+  # `QUIT' BUTTON
+  my $button_quit =new Gtk::Button 'Quit';
+  $hbox_but->pack_end_defaults ($button_quit);
+  $button_quit->signal_connect ('pressed',sub{exit},0);
+
+  # `STRATEGY' BOX
+  my $hbox_strategy = new Gtk::HBox (0,10);
+  $vbox_main->pack_start_defaults ($hbox_strategy);
+
+  # STRATEGIES :
+  my $strategy1 = new Gtk::RadioButton "Exact";
+  $hbox_strategy->pack_start($strategy1, 1, 1, 0);
+  my $strategy2 = new Gtk::RadioButton "Contain", $strategy1;
+  $strategy2->set_active(1);
+  $hbox_strategy->pack_start($strategy2, 1, 1, 0);
+  my $strategy3 = new Gtk::RadioButton "RE", $strategy2;
+  $hbox_strategy->pack_start($strategy3, 1, 1, 0);
+
+  $strategy1->signal_connect ('pressed',sub{$strategy=0},0);
+  $strategy2->signal_connect ('pressed',sub{$strategy=1},0);
+  $strategy3->signal_connect ('pressed',sub{$strategy=2},0);
+
+  # RESULTS/STATE LABEL
+  $label_res = new Gtk::Label 'Results: ';
+  $vbox_main->pack_start_defaults ($label_res);
+
+  # RESULTS WINDOW
+  my $tab_text = new Gtk::Table(2,2,0);
+  $textbox = new Gtk::Text (0,0);
+  my $hscrollbar = new Gtk::HScrollbar ($textbox->hadj);
+  my $vscrollbar = new Gtk::VScrollbar ($textbox->vadj);
+  $tab_text->attach ($textbox,0,1,0,1,[-fill,-expand],[-fill,-expand],0,0);
+  $tab_text->attach ($hscrollbar,0,1,1,2,[-expand,-fill],[-fill],0,0);
+  $tab_text->attach ($vscrollbar,1,2,0,1,[-fill],[-expand,-fill],0,0);
+  $vbox_main->pack_end_defaults ($tab_text);
+
+  $top->show_all;
+  main Gtk;
+}
+
+### GTK IDP CALLBACKS
+
+sub choose_from_lang ($) {
+  my $item = pop;
+  return if ($item == $left);
+  if ($item == $right) {
+      $right = $left;
+      $option_into->set_history ($right);
+      $left = $item;
+      $side = 1-$side;
+      return;
+  }
+  unless ($left) {
+      $right = 0;
+      $option_into->set_history ($right);
+  }
+  $left = $item;
+}
+
+sub choose_into_lang ($) {
+  my $item = pop;
+  return if ($item == $right);
+  if ($item == $left) {
+      $left = $right;
+      $option_from->set_history ($left);
+      $right = $item;
+      $side = 1-$side;
+      return;
+  }
+  unless ($right) {
+      $left = 0;
+      $option_from->set_history ($left);
+  }
+  $right = $item;
+}
+
+sub translate () {
+  my $word = $entry_word->get_text();
+  return unless ($word);
+  $label_res->set_text ('Searching ...');
+  my $tranlation = get_idp_translation ( $word );
+  $textbox->set_point (0);
+  $textbox->forward_delete ($textbox->get_length);
+  $textbox->insert (undef,undef,undef,$tranlation);
+  $label_res->set_text ('Results:');
+}
+
+sub about () {
+  $textbox->set_point (0);
+  $textbox->forward_delete ($textbox->get_length);
+  $textbox->insert (undef,undef,undef,$about);
+}
+
+### INTERFACE-INDEPENDENT
+
+sub get_idp_translation ($) {
+  my $word = pop;
+  return unless ($word);
+  my $dictfile = $dictfiles [$lang];
+  $word =~ s/([.()\[\]{}\\])/\\$1/g unless ($strategy==2); # Escape RE characters
+  $word = '.*'.$word.'.*' if ($strategy);
+  $re = ($side?($word.'	.*'):('.*	'.$word)); # Warning : <TAB>s
+  $out = scalar `grep '^$re\$' $dictfile|grep -v '^#'`;
+  while ($out =~ /^(.*?)([aoeuiAOEUI][\\\/]|[aouAOU]\.|[nN]~)(.*)$/) {
+      $out=$1.($conv_tab{$2}).$3."\n";
+  }
+  return $out;
+}
