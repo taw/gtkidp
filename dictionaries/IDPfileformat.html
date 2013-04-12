@@ -1,0 +1,57 @@
+<!-- X-URL: http://www.june29.com/IDP/IDPfileformat.html -->
+<!-- Date: Sat, 04 Mar 2000 12:35:52 GMT -->
+<BASE HREF="http://www.june29.com/IDP/IDPfileformat.html">
+
+<html><head><title>The Internet Dictionary Project: Dictionary File Format</title></head>
+<body bgcolor="#FFFFFF">
+<img src="graphics/IDP1.gif" alt="The Internet Dictionary Project"><br>
+<img src="graphics/IDPfileformat.gif" alt="Dictionary File Format"><p>
+
+<H3>File Format</h3>
+
+  The dictionary files are lists of pairs of English and other-language
+  words, in the form:
+<pre>
+   English-word	Other-language-word
+   English-word	Other-language-word
+   ...</pre>
+  where the pairs are separated by a tab character, and each pair is
+  terminated by a carriage return character.  The "Other-language-word" is
+  a translation of the English word (see the <a href="IDPdisclaimer.html">Disclaimer</a>).
+  If an English word has more than one translation into the other language,
+  the English word is listed multiple times, each with a different
+  "Other-language-word".  For example, in Spanish:
+<pre>     dog	perro
+     dog	perra</pre>
+  Any comment lines in the file will begin with a pound sign ("#").  The
+  files are not sorted into any particular order.
+
+<h3>Accent Marks</h3>
+
+  Because these files are given in plain ASCII format, accented characters
+  usually are not given directly.  Certain conventions have been given to
+  people adding to the IDP files for accented characters, and most of the 
+  time these conventions were followed.
+
+<dl>
+<dt> <b> Spanish/Italian Accents</b>
+ <dd>    A letter followed by a forward slash ("/") indicates that the letter should have an acute accent over it.
+<dd>     A letter followed by a backward slash ("\") indicates that the letter
+        should have a grave accent over it.
+<dd>     A letter followed by a tilde ("~") indicates that the letter should
+        have a tilde above it.
+</dl>
+
+<dl><dt><b>   German Accents</b>
+<dd>     A letter followed by a period (".") indicates that the letter should 
+        have an umlaut over it.  (This is sometimes approximated by a vowel
+        followed by an "e" instead.)
+<dd>     A letter followed by a caret ("^") indicates that the letter should
+        have a circonflex over it.
+<dd>     Two s characters in a row usually indicates the German double-s 
+        character ("B")
+</dl>
+
+<p><a href="IDPfiles.html"><img src="graphics/IDPback.gif" alt="<- Back" border=0></a>
+<hr>
+<a href="../Tyler/">Tyler Chambers</a>
